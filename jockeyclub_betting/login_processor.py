@@ -14,10 +14,15 @@ import jockeyclub_betting.utils as utils
 
 @utils.logged
 class LoginProcessor:
-    def __init__(self, acc, pwd, jc_uri):
+    def __init__(self, acc, pwd, jc_uri, sq1, sa1,sq2, sa2, sa3):
         self.acc = acc
         self.pwd = pwd
         self.jc_uri = jc_uri
+        self.sq1 = sq1
+        self.sa1 = sa1
+        self.sq2 = sq2
+        self.sa2 = sa2
+        self.sa3 = sa3
         try:
             validation = [self.acc, self.pwd, self.jc_uri]
             if not all(validation) or validation == []:
@@ -54,12 +59,12 @@ class LoginProcessor:
     def get_security_answer(self):
         logging.info(f'Getting security answer...')
         securityquestion = self.driver.find_element(By.CSS_SELECTOR, 'div#ekbaSeqQuestion').text
-        if securityquestion == '你兒時住在哪區?':
-            security_answer = 'Taipo'
-        elif securityquestion == '你最好的朋友叫甚麼名字?':
-            security_answer = 'Edward'
+        if securityquestion == self.sq1:
+            security_answer = self.sa1
+        elif securityquestion == self.sq2:
+            security_answer = self.sa2
         else:
-            security_answer = 'Math'
+            security_answer = self.sa3
         return security_answer
 
     def click_button(self,target):

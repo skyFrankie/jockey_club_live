@@ -3,10 +3,11 @@ import logging
 import yaml
 import os
 from pathlib import Path
+#PROJECT_PATH = Path(os.path.dirname(os.getcwd()))
 PROJECT_PATH = Path(os.getcwd())
 FORMAT = '%(asctime)s %(levelname)s: %(message)s'
 LEVEL = logging.DEBUG
-logging.basicConfig(format=FORMAT,filename='./logs/executionLog.log',filemode='w',level=LEVEL)
+logging.basicConfig(format=FORMAT, filename=f'{PROJECT_PATH}/logs/executionLog.log', filemode='w', level=LEVEL)
 #logging.basicConfig(format=FORMAT,level=LEVEL)
 
 def logged(func):
