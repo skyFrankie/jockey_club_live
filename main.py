@@ -21,6 +21,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.chrome.options import Options
 
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
+
 from data.historical.feature_col import cat_col
 from ML.model.feature_col import index_col
 import xgboost as xgb
@@ -139,7 +142,7 @@ class SCRAPPER:
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--no-sandbox')
         return webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), chrome_options=chrome_options)
-        #return webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
+        # return webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
 
     @utils.logged
     def get_race_info(self):
@@ -167,13 +170,16 @@ class SCRAPPER:
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, '//*[@id="innerContent"]/div[2]/div[5]/div[2]'))
             ).click()
+            time.sleep(2)
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, '// *[ @ id = "ColSelectBody"] / form / table / tbody / tr[1] / td[4] / input'))
             ).click()
+            time.sleep(2)
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
                     (By.XPATH, '// *[ @ id = "ColSelectBody"] / form / table / thead / tr / td / table / tbody / tr / td[2] / a'))
             ).click()
+            time.sleep(2)
             meeting_table = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, '//*[@id="racecardlist"]/tbody/tr/td/table'))
             )
@@ -219,7 +225,6 @@ class SCRAPPER:
                     if key not in index_col and key != 'Ground_Truth' and key != 'Place' and key not in cat_col:
                         self.historical_df[key] = self.historical_df[key].astype(str).astype(val)
             except:
-                logging.info()
                 logging.info(traceback.format_exc())
             meeting_table = self.historical_df[self.historical_df['Race_ID'] == race_id]
             return meeting_table
@@ -287,6 +292,10 @@ class SCRAPPER:
         self.historical_df.drop(['prev_weight', 'avg_winning_weight', 'cumsum_weight', 'winning_weight'], axis=1, inplace=True)
         self.historical_df['prev_raced'] = self.historical_df.groupby(['Horse_Unique_ID'])['Place'].shift(1).fillna(0)
         self.historical_df['prev_raced'] = self.historical_df['prev_raced'].apply(lambda x: 1 if x != 0 else 0)
+        self.historical_df['prev_draw1'] = self.historical_df.groupby(['Horse_Unique_ID'])['Draw'].shift(1).fillna(0)
+        self.historical_df['prev_draw2'] = self.historical_df.groupby(['Horse_Unique_ID'])['Draw'].shift(2).fillna(0)
+        self.historical_df['prev_Jockey1'] = self.historical_df.groupby(['Horse_Unique_ID'])['Jockey'].shift(1)
+        self.historical_df['prev_Jockey2'] = self.historical_df.groupby(['Horse_Unique_ID'])['Jockey'].shift(2)
         self.historical_df['prev_class'] = self.historical_df.groupby(['Horse_Unique_ID'])['Class'].shift(1)
         self.historical_df['prev_class'] = self.historical_df[['Class', 'prev_place']].apply(lambda x: x['Class'] if x is None else x['prev_place'],axis=1)
         self.historical_df['prev_dist'] = self.historical_df.groupby(['Horse_Unique_ID'])['Distance'].shift(1)
@@ -334,10 +343,35 @@ class SCRAPPER:
         self.historical_df['horse2_vs_jockey200_win'] = self.historical_df['last_200_day_q'] * self.historical_df['horse_last_2_day_win']
         self.historical_df['horse5_vs_jockey200_win'] = self.historical_df['last_200_day_q'] * self.historical_df['horse_last_5_day_win']
         self.historical_df['horse5_vs_jockey200'] = self.historical_df['last_200_day_q'] * self.historical_df['horse_last_5_day_q']
+        self.historical_df['j_draw'] = self.historical_df['Jockey'].astype(str) + '_' + self.historical_df['Draw'].astype(str)
+        self.historical_df['j_draw'] = self.historical_df['j_draw'].astype("category")
         self.historical_df = self.historical_df[self.historical_df['Weight_Declared'] != '---']
         self.historical_df['Weight'] = self.historical_df['Weight'].astype(int)
         self.historical_df['Weight_Declared'] = self.historical_df['Weight_Declared'].astype(int)
         self.historical_df.sort_values(['Date','Race_ID'], inplace=True)
+
+def upload_to_ggldrive():
+    gauth = GoogleAuth()
+    gauth.LoadCredentialsFile("mycreds.txt")
+    if gauth.credentials is None:
+        # Authenticate if they're not there
+        gauth.LocalWebserverAuth()
+    elif gauth.access_token_expired:
+        # Refresh them if expired
+        gauth.Refresh()
+    else:
+        # Initialize the saved creds
+        gauth.Authorize()
+    # Save the current credentials to a file
+    gauth.SaveCredentialsFile("mycreds.txt")
+    drive = GoogleDrive(gauth)
+    upload_file_list = ['prediction_meeting_overall.csv']
+    file_path = PROJECTPATH/'prediction/'
+    for upload_file in upload_file_list:
+        gfile = drive.CreateFile({'parents': [{'id': ''}], 'title': upload_file})
+        # Read file and set it as the content of this instance.
+        gfile.SetContentFile(os.path.join(file_path,upload_file))
+        gfile.Upload() # Upload the file.
 
 @utils.logged
 def main():
@@ -363,11 +397,11 @@ def main():
     xgb_model.load_model(PROJECTPATH/'ML/model/xgboost_ranker.json')
     #meeting = 1
     overall = []
-    for meeting in tqdm(range(1, total_meeting - 1), leave=False):
+    for meeting in tqdm(range(1, total_meeting), leave=False):
         logging.info(f'Predicting meeting number: {meeting} .')
         scrapper = SCRAPPER(meeting)
-        df = scrapper.get_race_info()
         try:
+            df = scrapper.get_race_info()
             origin = df.copy()
             df = df[["Course","Class","Distance","Going","Surface","Runners","Prize","number_of_turns","Weight","Weight_Declared","Draw","Jockey","Trainer","Country","Import_type","Owner","Sire","Dam","Dam_sire","prev_place","prev_weight_diff","cumcount_win","wtdf_prev_avg_win_wt","prev_raced","prev_class","prev_dist","horse_winning_history","horse_qing_history","horse_last_5_day_q","horse_last_5_day_win","horse_last_2_day_q","horse_last_2_day_win","horse_last5_vs_2q","horse_last5_vs_2w","jockey_winning_history","jockey_qing_history","last_200_day_q","last_200_day_win","last_500_day_q","last_500_day_win","jockey_last500_vs_200_w","jockey_last500_vs_200_q","horse2_vs_jockey200","horse2_vs_jockey200_win","horse5_vs_jockey200_win","horse5_vs_jockey200"]+['Race_ID']]
             for col in cat_col:
@@ -375,7 +409,9 @@ def main():
             prediction = df.groupby('Race_ID').apply(lambda x: predict(xgb_model, x))
         except:
             logging.info(traceback.format_exc())
-            raise Exception('model error...')
+            print(f'Meeting number {meeting} failed to scrap...')
+            continue
+            #raise Exception('model error...')
         prediction = pd.DataFrame(prediction).reset_index()
         prediction.columns = ['Race_ID', 'predict_result']
         results = prediction['predict_result'].apply(pd.Series).reset_index().melt(id_vars='index').dropna()[['index', 'value']].set_index('index')
@@ -389,6 +425,7 @@ def main():
         overall.append(final_prediction)
     overall = pd.concat(overall)
     overall.to_csv(PROJECTPATH/f'prediction/prediction_meeting_overall.csv',index=False)
+    upload_to_ggldrive()
 if __name__ == '__main__':
     main()
 

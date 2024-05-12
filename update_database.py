@@ -285,7 +285,7 @@ class DBUPDATE_PROCESSOR:
                         sectional_id=self.get_sectional_id(),
                         record_id=self.historical_df['Record_ID'].max()
                     )
-                    self.historical_df = pd.concat([self.historical_df,race.horse_race_detail.drop(['Win_odds','Horse_Name'],axis=1)])
+                    self.historical_df = pd.concat([self.historical_df,race.horse_race_detail.drop(['Horse_Name'],axis=1)])
                 except Exception as e:
                     logging.info(e)
                     pass
@@ -299,7 +299,7 @@ class DBUPDATE_PROCESSOR:
             self.historical_df['Horse_ID'] = self.historical_df['Horse_ID'].astype(str)
             self.historical_df['Place'] = self.historical_df['Place'].astype(str)
             self.historical_df['Weight_Declared'] = self.historical_df['Weight_Declared'].astype(int)
-            #self.historical_df['Win_odds'] = self.historical_df['Win_odds'].astype(float)
+            self.historical_df['Win_odds'] = self.historical_df['Win_odds'].astype(float)
             self.historical_df.to_parquet(DATAPATH / 'historical_model_input.parquet')
 
     @utils.logged
